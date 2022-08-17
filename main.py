@@ -9,6 +9,11 @@ import subprocess
 
 
 BUFFER_FILENAME_FOR_CONFIG_SAVING = 'C:/Users/Mikhail/PycharmProjects/pythonProject/bufferconfig.npy'
+DEFAULT_MAIN_WINDOW_SIZE = (1280, 720)
+DEFAULT_PARAMETER_PANEL_SIZE = (320, 240)
+DEFAULT_BOTS_PANEL_SIZE = (320, 480)
+DEFAULT_PICTURE_PANEL_SIZE = (960, 720)
+
 
 
 '''Graphical Interface'''
@@ -16,7 +21,7 @@ BUFFER_FILENAME_FOR_CONFIG_SAVING = 'C:/Users/Mikhail/PycharmProjects/pythonProj
 
 class MainWindow(wx.Frame):
     def __init__(self, parent, title):
-        wx.Frame.__init__(self, parent, title=title, size=(1280, 720))
+        wx.Frame.__init__(self, parent, title=title, size=DEFAULT_MAIN_WINDOW_SIZE, style=wx.DEFAULT_FRAME_STYLE ^ wx.RESIZE_BORDER)
         self.SetBackgroundColour(wx.WHITE)
         self.CreateStatusBar()
 
@@ -44,27 +49,31 @@ class MainWindow(wx.Frame):
         botsPanel = BotsPanel(mainPanel, config)
         picturePanel = PicturePanel(mainPanel)
 
-        sizer = wx.GridBagSizer()
-
-        sizer.Add(parameterPanel, (0, 0), (1, 1), flag=wx.EXPAND)
-        sizer.Add(botsPanel, (1, 0), (1, 1), flag=wx.EXPAND)
-        sizer.Add(picturePanel, (0, 1), (2, 2), flag=wx.EXPAND)
-
-        sizer.AddGrowableRow(0)
-        sizer.AddGrowableRow(1)
-        sizer.AddGrowableCol(0)
-        sizer.AddGrowableCol(1)
-        sizer.AddGrowableCol(2)
+        hboxsizer = wx.BoxSizer(wx.HORIZONTAL)
+        vboxsizer = wx.BoxSizer(wx.VERTICAL)
 
 
-        mainPanel.SetSizerAndFit(sizer)
+        vboxsizer.Add(parameterPanel, proportion=0, flag=wx.EXPAND)
+        vboxsizer.Add(botsPanel, proportion=0, flag=wx.EXPAND)
+
+        hboxsizer.Add(vboxsizer, proportion=0, flag=wx.EXPAND)
+        hboxsizer.Add(picturePanel, proportion=0, flag=wx.EXPAND)
+
+        # sizer.AddGrowableRow(0)
+        # sizer.AddGrowableRow(1)
+        # sizer.AddGrowableCol(0)
+        # sizer.AddGrowableCol(1)
+        # sizer.AddGrowableCol(2)
+
+
+        mainPanel.SetSizerAndFit(hboxsizer)
 
         self.Show(True)
 
 
 class BotsPanel(wx.Panel):
     def __init__(self, parent, config):
-        wx.Panel.__init__(self, parent, wx.ID_ANY, style=wx.SUNKEN_BORDER)
+        wx.Panel.__init__(self, parent, wx.ID_ANY, size=DEFAULT_BOTS_PANEL_SIZE, style=wx.SUNKEN_BORDER)
 
         self.config = config
 
@@ -154,7 +163,7 @@ class BotsPanel(wx.Panel):
 
 class ParameterPanel(wx.Panel):
     def __init__(self, parent, config):
-        wx.Panel.__init__(self, parent, wx.ID_ANY, style=wx.SUNKEN_BORDER)
+        wx.Panel.__init__(self, parent, wx.ID_ANY, size=DEFAULT_PARAMETER_PANEL_SIZE, style=wx.SUNKEN_BORDER)
 
         self.config = config
         self.parameter_name = ''
@@ -217,7 +226,7 @@ class ParameterPanel(wx.Panel):
 
 class PicturePanel(wx.Panel):
     def __init__(self, parent):
-        wx.Panel.__init__(self, parent, wx.ID_ANY, style=wx.SUNKEN_BORDER)
+        wx.Panel.__init__(self, parent, wx.ID_ANY, size=DEFAULT_PICTURE_PANEL_SIZE, style=wx.SUNKEN_BORDER)
 
         self.dc = wx.ClientDC(self)
         self.gc = wx.GraphicsContext.Create(self.dc)
