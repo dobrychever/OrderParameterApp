@@ -60,24 +60,19 @@ class MainWindow(wx.Frame):
 
         parameterPanel = ParameterPanel(mainPanel, config)
         botsPanel = BotsPanel(mainPanel, config)
-        picturePanel = PicturePanel(mainPanel)
+        picturePanel = PicturePanel(mainPanel, config)
+
+        botsPanel.setPicturePanel(picturePanel)
+        picturePanel.setBotsPanel(botsPanel)
 
         hboxsizer = wx.BoxSizer(wx.HORIZONTAL)
         vboxsizer = wx.BoxSizer(wx.VERTICAL)
-
 
         vboxsizer.Add(parameterPanel, proportion=0, flag=wx.EXPAND)
         vboxsizer.Add(botsPanel, proportion=0, flag=wx.EXPAND)
 
         hboxsizer.Add(vboxsizer, proportion=0, flag=wx.EXPAND)
         hboxsizer.Add(picturePanel, proportion=0, flag=wx.EXPAND)
-
-        # sizer.AddGrowableRow(0)
-        # sizer.AddGrowableRow(1)
-        # sizer.AddGrowableCol(0)
-        # sizer.AddGrowableCol(1)
-        # sizer.AddGrowableCol(2)
-
 
         mainPanel.SetSizerAndFit(hboxsizer)
 
@@ -89,6 +84,7 @@ class BotsPanel(wx.Panel):
         wx.Panel.__init__(self, parent, wx.ID_ANY, size=DEFAULT_BOTS_PANEL_SIZE, style=wx.SUNKEN_BORDER)
 
         self.config = config
+        self.picture_panel = None
 
         self.bots_number_text = wx.StaticText(self, wx.ID_ANY, '', size=DEFAULT_BOTS_NUMBER_TEXT_SIZE, style=wx.SIMPLE_BORDER)
         self._updateBotsNumberText()
@@ -141,6 +137,9 @@ class BotsPanel(wx.Panel):
 
         self.SetSizerAndFit(vboxsizer)
 
+    def setPicturePanel(self, picture_panel):
+        self.picture_panel = picture_panel
+
     def onAdd(self, event):
         id = self.new_bot_id_text_ctrl.GetLineText(0)
         angle = self.new_bot_angle_text_ctrl.GetLineText(0)
@@ -148,9 +147,10 @@ class BotsPanel(wx.Panel):
         y = self.new_bot_coordinate_y_text_ctrl.GetLineText(0)
 
         if '' not in [id, angle, x, y]:
-            self.config.AddBot(id, angle, (int(x), int(y)))
+            self.config.AddBot(int(id), float(angle), (float(x), float(y)))
             self._updateBotsNumberText()
             self._updateBotsList()
+            self.picture_panel.callConfigRedraw()
 
     def onLoad(self, event):
         with wx.FileDialog(self, "Open .npy file", wildcard='*.npy', style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as filedialog:
@@ -269,6 +269,8 @@ class PicturePanel(wx.Panel):
         wx.Panel.__init__(self, parent, wx.ID_ANY, size=DEFAULT_PICTURE_PANEL_SIZE, style=wx.SUNKEN_BORDER)
 
         self.config = config
+        self.bots_panel = None
+        self.drawTypeFlag = 'config'
 
         self.Bind(wx.EVT_PAINT, self.onPaint, self)
 
@@ -279,20 +281,26 @@ class PicturePanel(wx.Panel):
 
         self.mouse_pos = (0, 0)
 
+    def setBotsPanel(self, bots_panel):
+        self.bots_panel = bots_panel
+
+    def callConfigRedraw(self):
+        self.drawTypeFlag = 'config'
+        self.Refresh(eraseBackground=True)
+
     def onPaint(self, event):
         self.dc = wx.PaintDC(self)
         self.gc = wx.GraphicsContext.Create(self.dc)
         self.gc.SetPen(wx.Pen("navy", 1))
         self.gc.SetBrush(wx.Brush("pink"))
 
-        path = self.gc.CreatePath()
-        mouse_pos = self.mouse_pos
-        path.AddCircle(mouse_pos[0], mouse_pos[1], 50)
-        self.gc.StrokePath(path)
+        if self.drawTypeFlag == 'config':
+            path = self.gc.CreatePath()
+            self._addConfigToPath(path, 10)
+            self.gc.StrokePath(path)
 
     def onMouseMove(self, event):
-        self.mouse_pos = event.GetLogicalPosition(self.dc)
-        self.Refresh(eraseBackground=True)#, rect=wx.Rect(self.mouse_pos[0]-100, self.mouse_pos[1]-100, 200, 200))
+        self.Refresh(eraseBackground=True)
 
     def onResize(self, event):
         self.center = (event.GetSize()[0] // 2, event.GetSize()[1] // 2)
@@ -300,42 +308,39 @@ class PicturePanel(wx.Panel):
     def onLeftClick(self, event):
         pass
 
-    def drawConfig(self):
-        pass
+    def _addConfigToPath(self, graphics_path, scale):
+        for bot in self.config.GetBotsPositions():
+            points = self._getBotPoints(bot)
+            self._addBotToPath(graphics_path, points, scale)
 
-    def drawBot(self, bot_points, scale):
-        nose_point = bot_points[0] * scale
-        right_point = bot_points[1][0] * scale
-        left_point = bot_points[1][1] * scale
-        center_point = bot_points[2] * scale
-        radius = bot_points[3]
+
+    def _addBotToPath(self, graphics_path, bot_points, scale):
+        nose_point = self._sumPoints((0,0), bot_points[0], scale)
+        right_point = self._sumPoints((0,0), bot_points[1][0], scale)
+        left_point = self._sumPoints((0,0), bot_points[1][1], scale)
+        center_point = self._sumPoints((0,0), bot_points[2], scale)
+        radius = bot_points[3] * scale
 
         right_rel = self._sumPoints(right_point, center_point, -1)
         left_rel = self._sumPoints(left_point, center_point, -1)
-
-        self.dc = wx.PaintDC(self)
-        self.gc = wx.GraphicsContext.Create(self.dc)
-        self.gc.SetPen(wx.Pen("navy", 1))
-        self.gc.SetBrush(wx.Brush("pink"))
-
-        path = self.gc.CreatePath()
-        path.MoveToPoint(left_point[0], left_point[1])
-        path.AddLineToPoint(nose_point[0], nose_point[1])
-        path.AddLineToPoint(right_point[0], right_point[1])
-        path.AddArc(center_point[0], center_point[1], radius, np.arctan2(-right_rel[1], right_rel[0]), clockwise=True)
-        path.AddArc(center_point[0], center_point[1], radius, np.arctan2(-left_rel[1], left_rel[0]), clockwise=True)
-        path.CloseSubpath()
-        self.gc.StrokePath(path)
+        # graphics_path.CloseSubpath()
+        graphics_path.MoveToPoint(left_point[0], left_point[1])
+        graphics_path.AddLineToPoint(nose_point[0], nose_point[1])
+        graphics_path.AddLineToPoint(right_point[0], right_point[1])
+        # graphics_path.MoveToPoint(left_point[0], left_point[1])
+        # graphics_path.CloseSubpath()
+        center_point = wx.Point2D(center_point[0], center_point[1])
+        graphics_path.AddCircle(center_point[0], center_point[1], radius)
+        # graphics_path.CloseSubpath()
 
 
-    def _getBotPoints(self, bots_number_in_config):
+    def _getBotPoints(self, bot):
         ipraw = intersect_points_raw = (
-            (2.25, 0.1635),
-            (-2.25, 0.1635)
+            (-0.1635, 2.25),
+            (-0.1635, -2.25)
         )
         l_1 = 6.5
         r = 2.5
-        bot = self.config[bots_number_in_config]
         angle = bot[1]
         pos = bot[2]
         nose_pos = (pos[0] + l_1 * np.cos(angle * DEG2RAD), pos[1] + l_1 * np.sin(angle * DEG2RAD))
@@ -344,11 +349,14 @@ class PicturePanel(wx.Panel):
             self._rotatePoint(ipraw[0], angle),
             self._rotatePoint(ipraw[1], angle)
         )
-        iprot_pos = self._sumPoints(iprot, pos, 1)
-        return (nose_pos, iprot_pos, pos, r)
+        iprot_pos = (
+            self._sumPoints(iprot[0], pos, 1),
+            self._sumPoints(iprot[1], pos, 1),
+        )
+        return nose_pos, iprot_pos, pos, r
 
     def _rotatePoint(self, point, angle_deg):
-        rotated = (
+        return (
             point[0] * np.cos(angle_deg*DEG2RAD) - point[1] * np.sin(angle_deg*DEG2RAD),
             point[0] * np.sin(angle_deg*DEG2RAD) + point[1] * np.cos(angle_deg*DEG2RAD),
         )
