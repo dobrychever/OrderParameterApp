@@ -98,11 +98,19 @@ class MainWindow(wx.Frame):
         hboxsizer = wx.BoxSizer(wx.HORIZONTAL)
         vboxsizer = wx.BoxSizer(wx.VERTICAL)
 
+
         vboxsizer.Add(parameterPanel, proportion=0, flag=wx.EXPAND)
         vboxsizer.Add(botsPanel, proportion=0, flag=wx.EXPAND)
 
         hboxsizer.Add(vboxsizer, proportion=0, flag=wx.EXPAND)
         hboxsizer.Add(picturePanel, proportion=0, flag=wx.EXPAND)
+
+        # sizer.AddGrowableRow(0)
+        # sizer.AddGrowableRow(1)
+        # sizer.AddGrowableCol(0)
+        # sizer.AddGrowableCol(1)
+        # sizer.AddGrowableCol(2)
+
 
         mainPanel.SetSizerAndFit(hboxsizer)
 
@@ -230,7 +238,7 @@ class BotsPanel(wx.Panel):
 
 
 class ParameterPanel(wx.Panel):
-    def __init__(self, parent, config=[], scale=1):
+    def __init__(self, parent, config, scale=1):
         wx.Panel.__init__(self, parent, wx.ID_ANY, size=DEFAULT_PARAMETER_PANEL_SIZE, style=wx.SUNKEN_BORDER)
 
         self.config = config
@@ -287,8 +295,8 @@ class ParameterPanel(wx.Panel):
     def onCalculate(self, event):
         self.config.SaveConfiguration(BUFFER_FILENAME_FOR_CONFIG_SAVING)
         args = [sys.executable, self.parameter_file, BUFFER_FILENAME_FOR_CONFIG_SAVING]
-        complited_process = subprocess.run(args, capture_output=True, text=True, check=True)
-        self.parameter_value = complited_process.stdout
+        completed_process = subprocess.run(args, capture_output=True, text=True, check=True)
+        self.parameter_value = completed_process.stdout
         self._updateHeaderText()
 
     def _updateHeaderText(self):
@@ -300,14 +308,14 @@ class PicturePanel(wx.Panel):
 
         self.config = config
         self.bots_panel = None
+
         self.drawTypeFlag = 'config'
+        self.scale = 40 / 9
+        self.center = (self.Size[0] // 2, self.Size[1] // 2)
 
         self.Bind(wx.EVT_PAINT, self.onPaint, self)
-
-        self.center = (self.Size[0] // 2, self.Size[1] // 2)
-        self.Bind(wx.EVT_MOTION, self.onMouseMove, self)
-        self.Bind(wx.EVT_SIZE, self.onResize, self)
         self.Bind(wx.EVT_LEFT_DOWN, self.onLeftClick, self)
+        self.Bind(wx.EVT_MOTION, self.onDrag, self)
 
         self.mouse_pos = (0, 0)
 
@@ -326,37 +334,37 @@ class PicturePanel(wx.Panel):
 
         if self.drawTypeFlag == 'config':
             path = self.gc.CreatePath()
-            self._addConfigToPath(path, 10)
+            self._addConfigToPath(path)
             self.gc.StrokePath(path)
-
-    def onMouseMove(self, event):
-        self.Refresh(eraseBackground=True)
-
-    def onResize(self, event):
-        self.center = (event.GetSize()[0] // 2, event.GetSize()[1] // 2)
 
     def onLeftClick(self, event):
         pass
 
-    def _addConfigToPath(self, graphics_path, scale):
+    def onDrag(self, event):
+        if not event.Dragging():
+            event.Skip()
+            return
+        mouse_pos = event.GetPosition()
+
+
+    def _addConfigToPath(self, graphics_path):
         for bot in self.config.GetBotsPositions():
             points = self._getBotPoints(bot)
-            self._addBotToPath(graphics_path, points, scale)
+            self._addBotToPath(graphics_path, points)
 
 
-    def _addBotToPath(self, graphics_path, bot_points, scale):
+    def _addBotToPath(self, graphics_path, bot_points):
+        scale = self.scale
         nose_point = self._sumPoints((0,0), bot_points[0], scale)
         right_point = self._sumPoints((0,0), bot_points[1][0], scale)
         left_point = self._sumPoints((0,0), bot_points[1][1], scale)
         center_point = self._sumPoints((0,0), bot_points[2], scale)
         radius = bot_points[3] * scale
 
-        right_rel = self._sumPoints(right_point, center_point, -1)
-        left_rel = self._sumPoints(left_point, center_point, -1)
         graphics_path.MoveToPoint(left_point[0], left_point[1])
         graphics_path.AddLineToPoint(nose_point[0], nose_point[1])
         graphics_path.AddLineToPoint(right_point[0], right_point[1])
-        center_point = wx.Point2D(center_point[0], center_point[1])
+        # center_point = wx.Point2D(center_point[0], center_point[1])
         graphics_path.AddCircle(center_point[0], center_point[1], radius)
 
     def _getBotPoints(self, bot):
@@ -386,13 +394,38 @@ class PicturePanel(wx.Panel):
         return (p1[0] + scale * p2[0],
                 p1[1] + scale * p2[1])
 
+    def _directCoordinateTransform(self, x: float, y: float) -> tuple:
+        """
+        :param x: X-axis physical coordinate
+        :param y: Y-axis physical coordinate
+        :return: Screen coordinates in (X, Y) format
+
+        Takes physical coordinates in centimeters and returns screen coordinates in pixels
+        """
+
+        center = self.center
+        scale = self.scale
+        float_point = self._sumPoints(center, (x, -y), scale)
+        return int(float_point[0]), int(float_point[1])
+
+    def _inverseCoordinateTransform(self, x: int, y: int) -> tuple:
+        center = self.center
+        scale = self.scale
+        return self._sumPoints((0, 0), self._sumPoints((x, y), center, -1), 1 / scale)
+
+
+
+
+
+
+
 
 
 
 '''Bots configuration part'''
 
 
-class Configuration:
+class Configuration():
     def __init__(self):
         self.bots_positions = []
 
