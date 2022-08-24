@@ -28,6 +28,36 @@ DEFAULT_BOTS_LIST_COORDINATE_COLUMN_WIDTH = 80
 DEFAULT_PICTURE_PANEL_SIZE = (960, 720)
 
 
+'''Useful functions'''
+
+
+def calcTangentPoints(c: float, r: float, p: float, eps: float = 1E-9) -> tuple:
+    """
+    :param c: X-axis coordinate of circle center
+    :param r: Circle radius
+    :param p: X-axis coordinate of outer point
+    :return: Tangent points in ((X, Y), (X, Y)) format
+    :param eps: Threshold to consume two numbers equiv
+
+    Calculate coordinates of intersection of tangents from outer points to circle. Return one or two
+    points depending on point position
+    """
+
+    if r < 0:
+        non_negative_error = ValueError('r should be a positive number')
+        raise non_negative_error
+
+    if abs(p - c) < r:
+        return ()
+
+    if abs(abs(p - c) - r) <= eps:
+        return p, 0
+
+    x = (r**2 - c**2 + c * p) / (p - c)
+    y = (r**2 - (x - c)**2)**0.5
+    return (x, y), (x, -y)
+
+
 
 '''Graphical Interface'''
 
@@ -323,28 +353,19 @@ class PicturePanel(wx.Panel):
 
         right_rel = self._sumPoints(right_point, center_point, -1)
         left_rel = self._sumPoints(left_point, center_point, -1)
-        # graphics_path.CloseSubpath()
         graphics_path.MoveToPoint(left_point[0], left_point[1])
         graphics_path.AddLineToPoint(nose_point[0], nose_point[1])
         graphics_path.AddLineToPoint(right_point[0], right_point[1])
-        # graphics_path.MoveToPoint(left_point[0], left_point[1])
-        # graphics_path.CloseSubpath()
         center_point = wx.Point2D(center_point[0], center_point[1])
         graphics_path.AddCircle(center_point[0], center_point[1], radius)
-        # graphics_path.CloseSubpath()
-
 
     def _getBotPoints(self, bot):
-        ipraw = intersect_points_raw = (
-            (-0.1635, 2.25),
-            (-0.1635, -2.25)
-        )
         l_1 = 6.5
         r = 2.5
         angle = bot[1]
         pos = bot[2]
         nose_pos = (pos[0] + l_1 * np.cos(angle * DEG2RAD), pos[1] + l_1 * np.sin(angle * DEG2RAD))
-        nose_pos_rel = self._sumPoints(nose_pos, pos, -1)
+        ipraw = calcTangentPoints(0, r, l_1)
         iprot = (
             self._rotatePoint(ipraw[0], angle),
             self._rotatePoint(ipraw[1], angle)
