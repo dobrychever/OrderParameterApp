@@ -6,11 +6,19 @@ import subprocess
 
 
 '''Global constants'''
+
+
+#bot shape parameters
+BOT_REAR_RADIUS = 2.5
+BOT_LENGTH = 9
+
+#math constants
 DEG2RAD = np.pi / 180
 
+#applications initial constants
 BUFFER_FILENAME_FOR_CONFIG_SAVING = 'C:/Users/Mikhail/PycharmProjects/pythonProject/bufferconfig.npy'
 
-DEFAULT_MAIN_WINDOW_SIZE = (1280, 720)
+DEFAULT_MAIN_WINDOW_SIZE = (1280, 770)
 
 DEFAULT_PARAMETER_PANEL_SIZE = (320, 240)
 
@@ -23,7 +31,6 @@ DEFAULT_BOTS_LIST_NUMBER_COLUMN_WIDTH = 80
 DEFAULT_BOTS_LIST_ID_COLUMN_WIDTH = 80
 DEFAULT_BOTS_LIST_ANGLE_COLUMN_WIDTH = 80
 DEFAULT_BOTS_LIST_COORDINATE_COLUMN_WIDTH = 80
-
 
 DEFAULT_PICTURE_PANEL_SIZE = (960, 720)
 
@@ -58,6 +65,14 @@ def calcTangentPoints(c: float, r: float, p: float, eps: float = 1E-9) -> tuple:
     return (x, y), (x, -y)
 
 
+def getDistance(p1, p2):
+    """
+    :param p1: First point in (X, Y) format
+    :param p2: Second point in (X, Y) format
+    :return: Euclidean distance between given points
+    """
+    return ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)**0.5
+
 
 '''Graphical Interface'''
 
@@ -66,19 +81,19 @@ class MainWindow(wx.Frame):
     def __init__(self, parent, title):
         wx.Frame.__init__(self, parent, title=title, size=DEFAULT_MAIN_WINDOW_SIZE, style=wx.DEFAULT_FRAME_STYLE ^ wx.RESIZE_BORDER)
         self.SetBackgroundColour(wx.WHITE)
-        self.CreateStatusBar()
+        # self.CreateStatusBar()
 
         '''Creating menu'''
 
-        filemenu = wx.Menu()
-        filemenu.Append(wx.ID_ABOUT, "About", "Information about this Program")
-        filemenu.AppendSeparator()
-        filemenu.Append(wx.ID_EXIT, "Exit", "Terminate the Program")
-
-        menuBar = wx.MenuBar()
-        menuBar.Append(filemenu, "File")
-
-        self.SetMenuBar(menuBar)
+        # filemenu = wx.Menu()
+        # filemenu.Append(wx.ID_ABOUT, "About", "Information about this Program")
+        # filemenu.AppendSeparator()
+        # filemenu.Append(wx.ID_EXIT, "Exit", "Terminate the Program")
+        #
+        # menuBar = wx.MenuBar()
+        # menuBar.Append(filemenu, "File")
+        #
+        # self.SetMenuBar(menuBar)
 
         '''Creating bots configuration object'''
 
@@ -184,7 +199,7 @@ class BotsPanel(wx.Panel):
         x = self.new_bot_coordinate_x_text_ctrl.GetLineText(0)
         y = self.new_bot_coordinate_y_text_ctrl.GetLineText(0)
 
-        if '' not in [id, angle, x, y]:
+        if '' not in [id, angle, x, y] and not self.config.GetUsedIds()[int(id)]:
             self.config.AddBot(int(id), float(angle), (float(x), float(y)))
             self._updateBotsNumberText()
             self._updateBotsList()
@@ -312,9 +327,12 @@ class PicturePanel(wx.Panel):
         self.drawTypeFlag = 'config'
         self.scale = 40 / 9
         self.center = (self.Size[0] // 2, self.Size[1] // 2)
+        self.selected_bot_id = None
 
         self.Bind(wx.EVT_PAINT, self.onPaint, self)
-        self.Bind(wx.EVT_LEFT_DOWN, self.onLeftClick, self)
+
+        self.Bind(wx.EVT_LEFT_DOWN, self.onLeftDown, self)
+        self.Bind(wx.EVT_LEFT_UP, self.onLeftUp, self)
         self.Bind(wx.EVT_MOTION, self.onDrag, self)
 
         self.mouse_pos = (0, 0)
@@ -329,6 +347,7 @@ class PicturePanel(wx.Panel):
     def onPaint(self, event):
         self.dc = wx.PaintDC(self)
         self.gc = wx.GraphicsContext.Create(self.dc)
+        self.center = (self.gc.GetSize()[0] // 2, self.gc.GetSize()[1] // 2)
         self.gc.SetPen(wx.Pen("navy", 1))
         self.gc.SetBrush(wx.Brush("pink"))
 
@@ -337,15 +356,28 @@ class PicturePanel(wx.Panel):
             self._addConfigToPath(path)
             self.gc.StrokePath(path)
 
-    def onLeftClick(self, event):
+    def onLeftDown(self, event):
+        mouse_screen_pos = event.GetPosition()
+        mouse_physical_pos = self._inverseCoordinateTransform(mouse_screen_pos[0], mouse_screen_pos[1])
+        for bot in self.config.GetBotsPositions():
+            bot_pos = bot[2]
+            if getDistance(mouse_physical_pos, bot_pos) < BOT_REAR_RADIUS:
+                self._selectBotOnPicture(bot[0])
+                print(self.selected_bot_id)
+
+
+    def onLeftUp(self, event):
         pass
 
     def onDrag(self, event):
+        # print(event.GetPosition())
         if not event.Dragging():
             event.Skip()
             return
         mouse_pos = event.GetPosition()
 
+    def _selectBotOnPicture(self, bot_id):
+        self.selected_bot_id = bot_id
 
     def _addConfigToPath(self, graphics_path):
         for bot in self.config.GetBotsPositions():
@@ -355,10 +387,10 @@ class PicturePanel(wx.Panel):
 
     def _addBotToPath(self, graphics_path, bot_points):
         scale = self.scale
-        nose_point = self._sumPoints((0,0), bot_points[0], scale)
-        right_point = self._sumPoints((0,0), bot_points[1][0], scale)
-        left_point = self._sumPoints((0,0), bot_points[1][1], scale)
-        center_point = self._sumPoints((0,0), bot_points[2], scale)
+        nose_point =bot_points[0]
+        right_point = bot_points[1][0]
+        left_point = bot_points[1][1]
+        center_point = bot_points[2]
         radius = bot_points[3] * scale
 
         graphics_path.MoveToPoint(left_point[0], left_point[1])
@@ -368,8 +400,8 @@ class PicturePanel(wx.Panel):
         graphics_path.AddCircle(center_point[0], center_point[1], radius)
 
     def _getBotPoints(self, bot):
-        l_1 = 6.5
-        r = 2.5
+        l_1 = BOT_LENGTH - BOT_REAR_RADIUS
+        r = BOT_REAR_RADIUS
         angle = bot[1]
         pos = bot[2]
         nose_pos = (pos[0] + l_1 * np.cos(angle * DEG2RAD), pos[1] + l_1 * np.sin(angle * DEG2RAD))
@@ -382,6 +414,12 @@ class PicturePanel(wx.Panel):
             self._sumPoints(iprot[0], pos, 1),
             self._sumPoints(iprot[1], pos, 1),
         )
+        pos = self._directCoordinateTransform(pos[0], pos[1])
+        print(pos)
+        nose_pos = self._directCoordinateTransform(nose_pos[0], nose_pos[1])
+        print(nose_pos)
+        iprot_pos = (self._directCoordinateTransform(iprot_pos[0][0], iprot_pos[0][1]),
+                    self._directCoordinateTransform(iprot_pos[1][0], iprot_pos[1][1]))
         return nose_pos, iprot_pos, pos, r
 
     def _rotatePoint(self, point, angle_deg):
@@ -394,7 +432,7 @@ class PicturePanel(wx.Panel):
         return (p1[0] + scale * p2[0],
                 p1[1] + scale * p2[1])
 
-    def _directCoordinateTransform(self, x: float, y: float) -> tuple:
+    def _directCoordinateTransform(self, x, y):
         """
         :param x: X-axis physical coordinate
         :param y: Y-axis physical coordinate
@@ -408,7 +446,15 @@ class PicturePanel(wx.Panel):
         float_point = self._sumPoints(center, (x, -y), scale)
         return int(float_point[0]), int(float_point[1])
 
-    def _inverseCoordinateTransform(self, x: int, y: int) -> tuple:
+    def _inverseCoordinateTransform(self, x, y):
+        """
+        :param x: X-axis screen coordinate
+        :param y: Y-axis screen coordinate
+        :return: Screen coordinates in (X, Y) format
+
+        Takes screen coordinates in centimeters and returns physical coordinates in pixels
+        """
+
         center = self.center
         scale = self.scale
         return self._sumPoints((0, 0), self._sumPoints((x, y), center, -1), 1 / scale)
@@ -428,12 +474,16 @@ class PicturePanel(wx.Panel):
 class Configuration():
     def __init__(self):
         self.bots_positions = []
+        self.used_ids = [False for i in range(1000)]
 
     def GetBotsPositions(self):
         return self.bots_positions
 
     def GetBotsNumber(self):
         return len(self.bots_positions)
+
+    def GetUsedIds(self):
+        return self.used_ids
 
     def LoadConfiguration(self, filename):
         self.bots_positions = np.load(filename, allow_pickle=True).tolist()
@@ -442,7 +492,9 @@ class Configuration():
         np.save(filename, np.array(self.bots_positions, dtype=object), allow_pickle=True)
 
     def AddBot(self, identifier, angle, center):
-        self.bots_positions.append([identifier, angle, center])
+        if not self.used_ids[identifier]:
+            self.bots_positions.append([identifier, angle, center])
+            self.used_ids[identifier] = True
 
     def ClearConfiguration(self):
         self.bots_positions = []
