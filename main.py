@@ -7,6 +7,7 @@ import subprocess
 
 '''Global constants'''
 
+print(os.path.dirname(os.path.realpath(__file__)))
 
 #bot shape parameters
 BOT_REAR_RADIUS = 2.5
@@ -17,7 +18,7 @@ BOT_LENGTH = BOT_REAR_RADIUS + BOT_REAR_RADIUS / np.sin(BOT_NOSE_ANGLE)
 DEG2RAD = np.pi / 180
 
 #applications initial constants
-BUFFER_FILENAME_FOR_CONFIG_SAVING = 'C:/Users/mkbuz/PycharmProjects/OrderParameterApp/bufferconfig.npy'
+BUFFER_FILENAME_FOR_CONFIG_SAVING = os.path.dirname(os.path.realpath(__file__)) + '\\bufferconfig.npy'
 
 DEFAULT_MAIN_WINDOW_SIZE = (1280, 770)
 
