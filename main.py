@@ -10,29 +10,33 @@ import subprocess
 
 #bot shape parameters
 BOT_REAR_RADIUS = 2.5
-BOT_LENGTH = 9
+BOT_NOSE_ANGLE = np.pi / 8
+BOT_LENGTH = BOT_REAR_RADIUS + BOT_REAR_RADIUS / np.sin(BOT_NOSE_ANGLE)
 
 #math constants
 DEG2RAD = np.pi / 180
 
 #applications initial constants
-BUFFER_FILENAME_FOR_CONFIG_SAVING = 'C:/Users/Mikhail/PycharmProjects/pythonProject/bufferconfig.npy'
+BUFFER_FILENAME_FOR_CONFIG_SAVING = 'C:/Users/mkbuz/PycharmProjects/OrderParameterApp/bufferconfig.npy'
 
 DEFAULT_MAIN_WINDOW_SIZE = (1280, 770)
 
-DEFAULT_PARAMETER_PANEL_SIZE = (320, 240)
+DEFAULT_PARAMETER_PANEL_SIZE = (360, 240)
+DEFAULT_PARAMETERS_LIST_NUMBER_COLUMN_WIDTH = 40
+DEFAULT_PARAMETERS_LIST_NAME_COLUMN_WIDTH = 160
+DEFAULT_PARAMETERS_LIST_VALUE_COLUMN_WIDTH = 160
 
-DEFAULT_BOTS_PANEL_SIZE = (320, 480)
+DEFAULT_BOTS_PANEL_SIZE = (360, 480)
 DEFAULT_BOTS_NUMBER_TEXT_SIZE = (320, 20)
-DEFAULT_BUTTON_SIZE = (106, 20)
+DEFAULT_BUTTON_SIZE = (120, 20)
 DEFAULT_ADD_BUTTON_SIZE = (80, 20)
-DEFAULT_BOTS_LIST_SIZE = (320, 420)
+DEFAULT_BOTS_LIST_SIZE = (360, 420)
 DEFAULT_BOTS_LIST_NUMBER_COLUMN_WIDTH = 80
-DEFAULT_BOTS_LIST_ID_COLUMN_WIDTH = 80
+DEFAULT_BOTS_LIST_ID_COLUMN_WIDTH = 60
 DEFAULT_BOTS_LIST_ANGLE_COLUMN_WIDTH = 80
-DEFAULT_BOTS_LIST_COORDINATE_COLUMN_WIDTH = 80
+DEFAULT_BOTS_LIST_COORDINATE_COLUMN_WIDTH = 140
 
-DEFAULT_PICTURE_PANEL_SIZE = (960, 720)
+DEFAULT_PICTURE_PANEL_SIZE = (920, 720)
 
 
 '''Useful functions'''
@@ -64,6 +68,9 @@ def calcTangentPoints(c: float, r: float, p: float, eps: float = 1E-9) -> tuple:
     y = (r**2 - (x - c)**2)**0.5
     return (x, y), (x, -y)
 
+def sumPoints(p1, p2, scale):
+    return (p1[0] + scale * p2[0],
+            p1[1] + scale * p2[1])
 
 def getDistance(p1, p2):
     """
@@ -81,19 +88,6 @@ class MainWindow(wx.Frame):
     def __init__(self, parent, title):
         wx.Frame.__init__(self, parent, title=title, size=DEFAULT_MAIN_WINDOW_SIZE, style=wx.DEFAULT_FRAME_STYLE ^ wx.RESIZE_BORDER)
         self.SetBackgroundColour(wx.WHITE)
-        # self.CreateStatusBar()
-
-        '''Creating menu'''
-
-        # filemenu = wx.Menu()
-        # filemenu.Append(wx.ID_ABOUT, "About", "Information about this Program")
-        # filemenu.AppendSeparator()
-        # filemenu.Append(wx.ID_EXIT, "Exit", "Terminate the Program")
-        #
-        # menuBar = wx.MenuBar()
-        # menuBar.Append(filemenu, "File")
-        #
-        # self.SetMenuBar(menuBar)
 
         '''Creating bots configuration object'''
 
@@ -130,6 +124,10 @@ class MainWindow(wx.Frame):
         mainPanel.SetSizerAndFit(hboxsizer)
 
         self.Show(True)
+        self.Bind(wx.EVT_KEY_DOWN, self.onKeyDown, self)
+
+    def onKeyDown(self, event):
+        print(1)
 
 
 class BotsPanel(wx.Panel):
@@ -138,6 +136,9 @@ class BotsPanel(wx.Panel):
 
         self.config = config
         self.picture_panel = None
+
+        self.config_edit_mode = 'Add'
+        self.selected_bot_id = None
 
         self.bots_number_text = wx.StaticText(self, wx.ID_ANY, '', size=DEFAULT_BOTS_NUMBER_TEXT_SIZE, style=wx.SIMPLE_BORDER)
         self._updateBotsNumberText()
@@ -154,8 +155,8 @@ class BotsPanel(wx.Panel):
         self.add_edit_button = wx.Button(self, wx.ID_ANY, "Add", size=DEFAULT_ADD_BUTTON_SIZE)
         self.new_bot_id_text_ctrl = wx.TextCtrl(self, wx.ID_ANY, "", size = (DEFAULT_BOTS_LIST_ID_COLUMN_WIDTH, 20))
         self.new_bot_angle_text_ctrl = wx.TextCtrl(self, wx.ID_ANY, "", size = (DEFAULT_BOTS_LIST_ANGLE_COLUMN_WIDTH, 20))
-        self.new_bot_coordinate_x_text_ctrl = wx.TextCtrl(self, wx.ID_ANY, "", size = (DEFAULT_BOTS_LIST_ID_COLUMN_WIDTH // 2, 20))
-        self.new_bot_coordinate_y_text_ctrl = wx.TextCtrl(self, wx.ID_ANY, "", size = (DEFAULT_BOTS_LIST_ID_COLUMN_WIDTH // 2, 20))
+        self.new_bot_coordinate_x_text_ctrl = wx.TextCtrl(self, wx.ID_ANY, "", size = (DEFAULT_BOTS_LIST_COORDINATE_COLUMN_WIDTH // 2, 20))
+        self.new_bot_coordinate_y_text_ctrl = wx.TextCtrl(self, wx.ID_ANY, "", size = (DEFAULT_BOTS_LIST_COORDINATE_COLUMN_WIDTH // 2, 20))
 
         self.Bind(wx.EVT_BUTTON, self.onAdd, self.add_edit_button)
 
@@ -168,6 +169,7 @@ class BotsPanel(wx.Panel):
 
         self.Bind(wx.EVT_LIST_ITEM_SELECTED, self.onItemSelect, self.bots_list)
         self.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.onItemActivated, self.bots_list)
+        self.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self.onItemRightClick, self.bots_list)
 
         vboxsizer = wx.BoxSizer(wx.VERTICAL)
         vboxsizer.Add(self.bots_number_text, proportion=0, flag=wx.EXPAND)
@@ -190,8 +192,29 @@ class BotsPanel(wx.Panel):
 
         self.SetSizerAndFit(vboxsizer)
 
+        self.updatePanel()
+
+
+
     def setPicturePanel(self, picture_panel):
         self.picture_panel = picture_panel
+
+    def updatePanel(self):
+        self._updateBotsList()
+        self._updateBotsNumberText()
+        self._updateEditTextControls()
+
+    def setEditMode(self):
+        self.config_edit_mode = 'Edit'
+        self.add_edit_button.SetLabel('Edit')
+
+    def setAddMode(self):
+        self.config_edit_mode = 'Add'
+        self.add_edit_button.SetLabel('Add')
+
+    def setSelectedBot(self, selected_bot_id=None):
+        self.selected_bot_id = selected_bot_id
+
 
     def onAdd(self, event):
         id = self.new_bot_id_text_ctrl.GetLineText(0)
@@ -199,11 +222,24 @@ class BotsPanel(wx.Panel):
         x = self.new_bot_coordinate_x_text_ctrl.GetLineText(0)
         y = self.new_bot_coordinate_y_text_ctrl.GetLineText(0)
 
-        if '' not in [id, angle, x, y] and not self.config.GetUsedIds()[int(id)]:
-            self.config.AddBot(int(id), float(angle), (float(x), float(y)))
-            self._updateBotsNumberText()
-            self._updateBotsList()
-            self.picture_panel.callConfigRedraw()
+        print(self.config_edit_mode)
+        if '' not in [id, angle, x, y]:
+            if self.config_edit_mode == 'Add':
+                if not self.config.GetUsedIds()[int(id)]:
+                    self.config.AddBot(int(id), float(angle), (float(x), float(y)))
+                    self._updateBotsNumberText()
+                    self._updateBotsList()
+                    self._updateEditTextControls()
+                    self.picture_panel.callConfigRedraw()
+
+            if self.config_edit_mode == 'Edit':
+                self.config.EditBot(int(id), angle=float(angle), pos=(float(x), float(y)))
+                self._updateBotsNumberText()
+                self._updateBotsList()
+                self.picture_panel.callConfigRedraw()
+
+
+
 
     def onLoad(self, event):
         with wx.FileDialog(self, "Open .npy file", wildcard='*.npy', style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as filedialog:
@@ -214,6 +250,7 @@ class BotsPanel(wx.Panel):
                 self.config.LoadConfiguration(filename)
                 self._updateBotsList()
                 self._updateBotsNumberText()
+                self.picture_panel.callConfigRedraw()
             except IOError:
                 wx.LogError(f'Cannot open file {filename}')
 
@@ -231,12 +268,55 @@ class BotsPanel(wx.Panel):
         self.config.ClearConfiguration()
         self._updateBotsNumberText()
         self._updateBotsList()
+        self.picture_panel.callConfigRedraw()
 
     def onItemSelect(self, event):
-        print(event.Index)
+        self.setEditMode()
+        self.selected_bot_id = self.config.GetBotsPositions()[event.Index][0]
+        self._updateEditTextControls()
+        self.picture_panel.setSelectedBotId(self.selected_bot_id)
+
 
     def onItemActivated(self, event):
         print(str(event.Index) + ' a')
+
+    def onItemRightClick(self, event):
+        clicked_bot_id = self.config.GetBotsPositions()[event.Index][0]
+        print(clicked_bot_id)
+        if clicked_bot_id == self.selected_bot_id:
+            self.selected_bot_id = None
+            self.picture_panel.setSelectedBotId(self.selected_bot_id)
+            self.config.DeleteBot(clicked_bot_id)
+            self.setAddMode()
+
+        else:
+            self.config.DeleteBot(clicked_bot_id)
+
+        self.updatePanel()
+        self.picture_panel.callConfigRedraw()
+
+    def _updateEditTextControls(self):
+        if self.config_edit_mode == 'Add':
+            used_ids = self.config.GetUsedIds()
+            first_free = None
+            for i in range(1, len(used_ids)):
+                if not used_ids[i]:
+                    first_free = i
+                    break
+            self.new_bot_id_text_ctrl.SetLabel(str(first_free))
+            self.new_bot_angle_text_ctrl.SetLabel(str(0.0))
+            self.new_bot_coordinate_x_text_ctrl.SetLabel(str(0.0))
+            self.new_bot_coordinate_y_text_ctrl.SetLabel(str(0.0))
+
+        if self.config_edit_mode == 'Edit':
+            if self.selected_bot_id is None:
+                return
+            self.new_bot_id_text_ctrl.SetLabel(str(self.selected_bot_id))
+            angle, pos = self.config.GetBotPosById(self.selected_bot_id)
+            self.new_bot_angle_text_ctrl.SetLabel(str(angle))
+            self.new_bot_coordinate_x_text_ctrl.SetLabel(str(pos[0])[:6])
+            self.new_bot_coordinate_y_text_ctrl.SetLabel(str(pos[1])[:6])
+
 
     def _updateBotsNumberText(self):
         self.bots_number_text.SetLabel(f'Bots number: {self.config.GetBotsNumber()}')
@@ -247,9 +327,9 @@ class BotsPanel(wx.Panel):
         bots_positions = self.config.GetBotsPositions()
         for i in range(bots_number):
             self.bots_list.InsertItem(i, str(i + 1))
-            self.bots_list.SetItem(i, 1, str(bots_positions[i][0]))
-            self.bots_list.SetItem(i, 2, str(bots_positions[i][1]))
-            self.bots_list.SetItem(i, 3, str(bots_positions[i][2]))
+            self.bots_list.SetItem(i, 1, str(bots_positions[i][0])[:4])
+            self.bots_list.SetItem(i, 2, str(bots_positions[i][1])[:6])
+            self.bots_list.SetItem(i, 3, str(bots_positions[i][2][0])[:6] + ', ' + str(bots_positions[i][2][1])[:6])
 
 
 class ParameterPanel(wx.Panel):
@@ -260,11 +340,9 @@ class ParameterPanel(wx.Panel):
         self.scale = scale
 
         self.parameter_name = ''
+        self.parameters = {}
         self.parameter_file = ''
         self.parameter_value = None
-
-        self.header_text = wx.StaticText(self, wx.ID_ANY, '')
-        self._updateHeaderText()
 
         self.parameter_name_text_ctrl = wx.TextCtrl(self, wx.ID_ANY)
 
@@ -274,22 +352,22 @@ class ParameterPanel(wx.Panel):
         self.Bind(wx.EVT_BUTTON, self.onLoad, self.load_button)
         self.Bind(wx.EVT_BUTTON, self.onCalculate, self.calculate_button)
 
-        self.parameters_list = wx.ListCtrl(self, wx.ID_ANY, style=wx.LC_REPORT)
-        self.parameters_list.InsertColumn(0, '№')
-        self.parameters_list.InsertColumn(1, 'Parameter name')
-        self.parameters_list.InsertColumn(2, 'Value')
+        self.parameters_list = wx.ListCtrl(self, wx.ID_ANY, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self.parameters_list.InsertColumn(0, '№', width=DEFAULT_PARAMETERS_LIST_NUMBER_COLUMN_WIDTH)
+        self.parameters_list.InsertColumn(1, 'Parameter name', width=DEFAULT_PARAMETERS_LIST_NAME_COLUMN_WIDTH)
+        self.parameters_list.InsertColumn(2, 'Value', width=DEFAULT_PARAMETERS_LIST_VALUE_COLUMN_WIDTH)
+
+        self.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self.onItemRightClick, self.parameters_list)
 
         sizer = wx.GridBagSizer()
 
         sizer.Add(self.parameter_name_text_ctrl, (0,0), (1,1), flag=wx.EXPAND)
         sizer.Add(self.load_button, (0,1), (1,1), flag=wx.EXPAND)
         sizer.Add(self.calculate_button, (0,2), (1,1), flag=wx.EXPAND)
-        sizer.Add(self.header_text, (1,0), (1,3), flag=wx.EXPAND)
-        sizer.Add(self.parameters_list, (2,0), (1,3), flag=wx.EXPAND)
+        sizer.Add(self.parameters_list, (1,0), (1,3), flag=wx.EXPAND)
 
         sizer.AddGrowableRow(0)
         sizer.AddGrowableRow(1)
-        sizer.AddGrowableRow(2)
         sizer.AddGrowableCol(0)
         sizer.AddGrowableCol(1)
         sizer.AddGrowableCol(2)
@@ -297,43 +375,73 @@ class ParameterPanel(wx.Panel):
         self.SetSizerAndFit(sizer)
 
     def onLoad(self, event):
-        self.parameter_name = self.parameter_name_text_ctrl.GetLineText(0)
+        parameter_name = self.parameter_name_text_ctrl.GetLineText(0)
+        if parameter_name in self.parameters.keys():
+            event.Skip()
+            return
+
         self.parameter_name_text_ctrl.Clear()
-        self._updateHeaderText()
         with wx.FileDialog(self, 'Open .py file', wildcard='*.py', style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as filedialog:
             if filedialog.ShowModal() == wx.ID_CANCEL:
                 return
             filename = filedialog.GetPath()
-            self.parameter_file = filename
+            self.parameters[parameter_name] = {'file': filename,
+                                               'value': None}
+        self._updateParametersList()
         print(self.parameter_file)
 
     def onCalculate(self, event):
         self.config.SaveConfiguration(BUFFER_FILENAME_FOR_CONFIG_SAVING)
-        args = [sys.executable, self.parameter_file, BUFFER_FILENAME_FOR_CONFIG_SAVING]
-        completed_process = subprocess.run(args, capture_output=True, text=True, check=True)
-        self.parameter_value = completed_process.stdout
-        self._updateHeaderText()
+        for parameter_name in self.parameters.keys():
+            parameter_file = self.parameters[parameter_name]['file']
+            args = [sys.executable, parameter_file, BUFFER_FILENAME_FOR_CONFIG_SAVING]
+            completed_process = subprocess.run(args, capture_output=True, text=True, check=True)
+            parameter_value = completed_process.stdout
+            self.parameters[parameter_name]['value'] = parameter_value
+        self._updateParametersList()
 
-    def _updateHeaderText(self):
-        self.header_text.SetLabel(f'Parameter: {self.parameter_name}, value: {self.parameter_value}')
+    def onItemRightClick(self, event):
+        item_index = event.Index
+        item = self.parameters_list.GetItem(item_index, col=1).GetText()
+        self.parameters.pop(item)
+        self._updateParametersList()
+
+
+    def _updateParametersList(self):
+        self.parameters_list.DeleteAllItems()
+        index = 0
+        for parameter_name in self.parameters.keys():
+            parameter_value = self.parameters[parameter_name]['value']
+            self.parameters_list.InsertItem(index, str(index+1))
+            self.parameters_list.SetItem(index, 1, str(parameter_name))
+            self.parameters_list.SetItem(index, 2, str(parameter_value))
+
 
 class PicturePanel(wx.Panel):
     def __init__(self, parent, config):
         wx.Panel.__init__(self, parent, wx.ID_ANY, size=DEFAULT_PICTURE_PANEL_SIZE, style=wx.SUNKEN_BORDER)
-
+        self.SetDoubleBuffered(True)
         self.config = config
         self.bots_panel = None
 
+        self.pen_color = "navy"
         self.drawTypeFlag = 'config'
         self.scale = 40 / 9
         self.center = (self.Size[0] // 2, self.Size[1] // 2)
         self.selected_bot_id = None
+        self.previous_mouse_pos = None
 
         self.Bind(wx.EVT_PAINT, self.onPaint, self)
 
+        self.Bind(wx.EVT_LEFT_DCLICK, self.onLeftDoubleClick, self)
         self.Bind(wx.EVT_LEFT_DOWN, self.onLeftDown, self)
         self.Bind(wx.EVT_LEFT_UP, self.onLeftUp, self)
         self.Bind(wx.EVT_MOTION, self.onDrag, self)
+        self.Bind(wx.EVT_MOUSEWHEEL, self.onWheel, self)
+        self.Bind(wx.EVT_KEY_DOWN, self.onKeyDown, self)
+        self.Bind(wx.EVT_KEY_UP, self.onKeyDown, self)
+        self.Bind(wx.EVT_CHAR, self.onKeyDown, self)
+
 
         self.mouse_pos = (0, 0)
 
@@ -342,42 +450,111 @@ class PicturePanel(wx.Panel):
 
     def callConfigRedraw(self):
         self.drawTypeFlag = 'config'
+        self.pen_color = "navy"
         self.Refresh(eraseBackground=True)
+
+    def setSelectedBotId(self, id):
+        self.selected_bot_id = id
 
     def onPaint(self, event):
         self.dc = wx.PaintDC(self)
         self.gc = wx.GraphicsContext.Create(self.dc)
         self.center = (self.gc.GetSize()[0] // 2, self.gc.GetSize()[1] // 2)
-        self.gc.SetPen(wx.Pen("navy", 1))
-        self.gc.SetBrush(wx.Brush("pink"))
+        self.gc.SetPen(wx.Pen(self.pen_color, 1))
+        self.gc.SetBrush(wx.Brush("pink", 1))
 
         if self.drawTypeFlag == 'config':
+            # self.gc.SetPen(wx.Pen("white", 1))
+            # self.gc.DrawRectangle(0, 0, 1000, 1000)
+            # self.gc.SetPen(wx.Pen(self.pen_color, 1))
             path = self.gc.CreatePath()
             self._addConfigToPath(path)
             self.gc.StrokePath(path)
 
-    def onLeftDown(self, event):
+    def onLeftDoubleClick(self, event):
+        print('Double click')
         mouse_screen_pos = event.GetPosition()
         mouse_physical_pos = self._inverseCoordinateTransform(mouse_screen_pos[0], mouse_screen_pos[1])
+        selected_bot_id = None
         for bot in self.config.GetBotsPositions():
             bot_pos = bot[2]
             if getDistance(mouse_physical_pos, bot_pos) < BOT_REAR_RADIUS:
-                self._selectBotOnPicture(bot[0])
-                print(self.selected_bot_id)
+                selected_bot_id = bot[0]
+                print(selected_bot_id)
+                self._selectBotOnPicture(selected_bot_id)
+                return
+        self._deselectBotOnPicture()
 
+    # def onLeftDoubleClick(self, event):
+    #     print('Double click')
+    #     mouse_screen_pos = event.GetPosition()
+    #     mouse_physical_pos = self._inverseCoordinateTransform(mouse_screen_pos[0], mouse_screen_pos[1])
+    #     selected_bot_id = None
+    #     for bot in self.config.GetBotsPositions():
+    #         bot_pos = bot[2]
+    #         if getDistance(mouse_physical_pos, bot_pos) < BOT_REAR_RADIUS:
+    #             selected_bot_id = bot[0]
+    #             print(selected_bot_id)
+    #             self._selectBotOnPicture(selected_bot_id)
+    #             return
+    #     self._deselectBotOnPicture()
+
+    def onLeftDown(self, event):
+        print('Down')
+        mouse_screen_pos = event.GetPosition()
+        mouse_physical_pos = self._inverseCoordinateTransform(mouse_screen_pos[0], mouse_screen_pos[1])
+        print(mouse_physical_pos)
+        if self.selected_bot_id is not None:
+            self.previous_mouse_pos = mouse_physical_pos
 
     def onLeftUp(self, event):
-        pass
+        return
 
     def onDrag(self, event):
-        # print(event.GetPosition())
         if not event.Dragging():
             event.Skip()
             return
-        mouse_pos = event.GetPosition()
+
+        if self.selected_bot_id is None:
+            event.Skip()
+            return
+
+        mouse_screen_pos = event.GetPosition()
+        mouse_physical_pos = self._inverseCoordinateTransform(mouse_screen_pos[0], mouse_screen_pos[1])
+        delta = self._sumPoints(mouse_physical_pos, self.previous_mouse_pos, -1)
+        delta = (delta[0], delta[1])
+        self.previous_mouse_pos = mouse_physical_pos
+        # self.config.MoveBot(self.selected_bot_id, delta_pos=delta)
+        self.config.EditBot(self.selected_bot_id, pos=mouse_physical_pos)
+        self.bots_panel.updatePanel()
+        self.callConfigRedraw()
+
+    def onWheel(self, event):
+        if self.selected_bot_id is None:
+            event.Skip()
+            return
+        rotation = event.GetWheelRotation()
+        sensitive = 1 / 120
+        self.config.MoveBot(self.selected_bot_id, delta_angle=rotation * sensitive)
+        self.bots_panel.updatePanel()
+        self.callConfigRedraw()
+
+    def onKeyDown(self, event):
+        print(1)
+        event.Skip()
+
 
     def _selectBotOnPicture(self, bot_id):
         self.selected_bot_id = bot_id
+        self.bots_panel.setSelectedBot(bot_id)
+        self.bots_panel.setEditMode()
+        self.bots_panel.updatePanel()
+
+    def _deselectBotOnPicture(self):
+        self.selected_bot_id = None
+        self.bots_panel.setSelectedBot(None)
+        self.bots_panel.setAddMode()
+        self.bots_panel.updatePanel()
 
     def _addConfigToPath(self, graphics_path):
         for bot in self.config.GetBotsPositions():
@@ -415,9 +592,9 @@ class PicturePanel(wx.Panel):
             self._sumPoints(iprot[1], pos, 1),
         )
         pos = self._directCoordinateTransform(pos[0], pos[1])
-        print(pos)
+        # print(pos)
         nose_pos = self._directCoordinateTransform(nose_pos[0], nose_pos[1])
-        print(nose_pos)
+        # print(nose_pos)
         iprot_pos = (self._directCoordinateTransform(iprot_pos[0][0], iprot_pos[0][1]),
                     self._directCoordinateTransform(iprot_pos[1][0], iprot_pos[1][1]))
         return nose_pos, iprot_pos, pos, r
@@ -457,7 +634,9 @@ class PicturePanel(wx.Panel):
 
         center = self.center
         scale = self.scale
-        return self._sumPoints((0, 0), self._sumPoints((x, y), center, -1), 1 / scale)
+        physical_pos = self._sumPoints((0, 0), self._sumPoints((x, y), center, -1), 1 / scale)
+        physical_pos = (physical_pos[0], -physical_pos[1])
+        return physical_pos
 
 
 
@@ -484,6 +663,44 @@ class Configuration():
 
     def GetUsedIds(self):
         return self.used_ids
+
+    def GetBotPosById(self, identifier):
+        for i in range(len(self.bots_positions)):
+            if self.bots_positions[i][0] == identifier:
+                return self.bots_positions[i][1], self.bots_positions[i][2]
+
+    def EditBot(self, identifier, angle=None, pos=None):
+        if angle is None and pos is None:
+            return
+
+        for i in range(len(self.bots_positions)):
+            if self.bots_positions[i][0] == identifier:
+                if angle is not None:
+                    self.bots_positions[i][1] = angle
+                if pos is not None:
+                    self.bots_positions[i][2] = pos
+                return
+
+    def MoveBot(self, identifier, delta_angle=None, delta_pos=None):
+        if delta_angle is None and delta_pos is None:
+            return
+
+        for i in range(len(self.bots_positions)):
+            if self.bots_positions[i][0] == identifier:
+                if delta_angle is not None:
+                    self.bots_positions[i][1] += delta_angle
+                if delta_pos is not None:
+                    self.bots_positions[i][2] = sumPoints(self.bots_positions[i][2], delta_pos, scale=1)
+                return
+
+    def DeleteBot(self, identifier):
+        if identifier is None:
+            return
+        for i in range(len(self.bots_positions)):
+            if self.bots_positions[i][0] == identifier:
+                self.bots_positions.remove(self.bots_positions[i])
+                self.used_ids[identifier] = False
+                return
 
     def LoadConfiguration(self, filename):
         self.bots_positions = np.load(filename, allow_pickle=True).tolist()
