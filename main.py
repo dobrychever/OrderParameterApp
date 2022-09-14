@@ -305,18 +305,18 @@ class BotsPanel(wx.Panel):
                     first_free = i
                     break
             self.new_bot_id_text_ctrl.SetLabel(str(first_free))
-            self.new_bot_angle_text_ctrl.SetLabel(str(0.0))
-            self.new_bot_coordinate_x_text_ctrl.SetLabel(str(0.0))
-            self.new_bot_coordinate_y_text_ctrl.SetLabel(str(0.0))
+            self.new_bot_angle_text_ctrl.SetLabel(str(0.00))
+            self.new_bot_coordinate_x_text_ctrl.SetLabel(str(0.0000))
+            self.new_bot_coordinate_y_text_ctrl.SetLabel(str(0.0000))
 
         if self.config_edit_mode == 'Edit':
             if self.selected_bot_id is None:
                 return
             self.new_bot_id_text_ctrl.SetLabel(str(self.selected_bot_id))
             angle, pos = self.config.GetBotPosById(self.selected_bot_id)
-            self.new_bot_angle_text_ctrl.SetLabel(str(angle))
-            self.new_bot_coordinate_x_text_ctrl.SetLabel(str(pos[0])[:6])
-            self.new_bot_coordinate_y_text_ctrl.SetLabel(str(pos[1])[:6])
+            self.new_bot_angle_text_ctrl.SetLabel(f'{angle:.2f}')
+            self.new_bot_coordinate_x_text_ctrl.SetLabel(f'{pos[0]:.4f}')
+            self.new_bot_coordinate_y_text_ctrl.SetLabel(f'{pos[1]:.4f}')
 
 
     def _updateBotsNumberText(self):
@@ -328,9 +328,9 @@ class BotsPanel(wx.Panel):
         bots_positions = self.config.GetBotsPositions()
         for i in range(bots_number):
             self.bots_list.InsertItem(i, str(i + 1))
-            self.bots_list.SetItem(i, 1, str(bots_positions[i][0])[:4])
-            self.bots_list.SetItem(i, 2, str(bots_positions[i][1])[:6])
-            self.bots_list.SetItem(i, 3, str(bots_positions[i][2][0])[:6] + ', ' + str(bots_positions[i][2][1])[:6])
+            self.bots_list.SetItem(i, 1, f'{bots_positions[i][0]}')
+            self.bots_list.SetItem(i, 2, f'{bots_positions[i][1]:.2f}')
+            self.bots_list.SetItem(i, 3, f'{bots_positions[i][2][0]:.4f}' + ', ' + f'{bots_positions[i][2][1]:.4f}')
 
 
 class ParameterPanel(wx.Panel):
@@ -463,6 +463,9 @@ class PicturePanel(wx.Panel):
         self.center = (self.gc.GetSize()[0] // 2, self.gc.GetSize()[1] // 2)
         self.gc.SetPen(wx.Pen(self.pen_color, 1))
         self.gc.SetBrush(wx.Brush("pink", 1))
+
+        # if self.config.GetBotsNumber >= 10 0:
+        #     self.scale =
 
         if self.drawTypeFlag == 'config':
             # self.gc.SetPen(wx.Pen("white", 1))
@@ -717,9 +720,22 @@ class Configuration():
     def ClearConfiguration(self):
         self.bots_positions = []
 
+    def _get_config_ids(self):
+        return [bot[0] for bot in self.bots_positions]
+
+    def _get_config_angles(self):
+        return [bot[1] for bot in self.bots_positions]
+
+    def _get_config_positions(self):
+        return [bot[2] for bot in self.bots_positions]
+
+    def _update_used_ids(self):
+        identifiers = self._get_config_ids()
+        for id in range(len(self.used_ids)):
+            self.used_ids[id] = id in identifiers
+
 
 if __name__ == '__main__':
     app = wx.App(False)
-    frame = MainWindow(None, "First program")
+    frame = MainWindow(None, "Order parameter app")
     app.MainLoop()
-
